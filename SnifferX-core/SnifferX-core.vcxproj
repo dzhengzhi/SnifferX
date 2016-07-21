@@ -151,9 +151,6 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <Text Include="ReadMe.txt" />
-  </ItemGroup>
-  <ItemGroup>
     <ClInclude Include="sn_analyzer.h" />
     <ClInclude Include="sn_auto_memory_utils_base.h" />
     <ClInclude Include="sn_blocking_queue.h" />
