@@ -1,5 +1,3 @@
-// SnifferX-core.cpp : 定义 DLL 应用程序的导出函数。
-//
 
 #include "stdafx.h"
 
@@ -15,7 +13,10 @@
 
 namespace snifferx {
 
+	//缓冲区大小
 	const int recv_buffer_size = 4 * 1024;
+	//等待时间
+	const int wait_for_recv_time_in_ms = 200;
 
 	SnifferX::SnifferX():worker_thread_(NULL) {
 		current_status_ = new atomic<SnStatus>(SnStatus::kNotInit);
@@ -40,12 +41,14 @@ namespace snifferx {
 		auto expected_value = SnStatus::kNotInit;
 		if (current_status_->compare_exchange_strong(expected_value, SnStatus::kInitializing, memory_order_seq_cst)) {
 			int error = 0;
+			//初始化SnSocket
 			if ((error = sock_.Init(ip_addr)) != 0) {
 				return error;
 			}
 
 			shared_ptr<SnInfoBlock> info_block_(new SnInfoBlock(sock_, *packet_queue_, *current_status_));
 
+			//启动工作线程
 			worker_thread_ = new thread(WorkerFunction, info_block_);
 
 			current_status_->store(SnStatus::kReady);
@@ -122,6 +125,7 @@ namespace snifferx {
 		int error = 0, recv_index = 0, other_recv_index = 0;
 		const int single_recv_buffer_size = recv_buffer_size / 2;
 		unsigned long recv_length[2] = { 0,0 };
+		//双缓冲区，交替读取和分析
 		char recv_buffer[single_recv_buffer_size][2];
 
 		shared_ptr<SnInfoBlock> & current_info_block_ = args;
@@ -129,12 +133,14 @@ namespace snifferx {
 
 		while (current_info_block_->current_status_.load(memory_order_seq_cst) != SnStatus::kExiting)
 		{
+			//将网络IO读入recv_buffer[recv_index]的时候，分析recv_buffer[other_recv_index]
 			error = current_info_block_->sock_.RecvAsync(static_cast<void*>(recv_buffer[recv_index]), single_recv_buffer_size);
 			if (other_recv_index > 0) {
+				//分析recv_buffer[other_recv_index]
 				SnPackage * package = (analyzer.Analize(recv_buffer[other_recv_index], recv_length[other_recv_index]));
 				current_info_block_->packet_queue_.Put(package);
 			}
-			error = current_info_block_->sock_.WaitRecvResult(recv_length[recv_index], 500);
+			error = current_info_block_->sock_.WaitRecvResult(recv_length[recv_index], wait_for_recv_time_in_ms);
 			if (current_info_block_->current_status_.load(memory_order_seq_cst) == SnStatus::kExiting)
 				break;
 
